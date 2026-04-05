@@ -1,0 +1,210 @@
+// generator client {
+//   provider = "prisma-client-js"
+// }
+
+// datasource db {
+//   provider = "postgresql"
+
+// }
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+  // url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────
+
+enum Role {
+  STUDENT
+  INSTRUCTOR
+}
+
+enum SessionStatus {
+  WAITING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum PairRole {
+  DRIVER
+  NAVIGATOR
+  OBSERVER
+}
+
+enum EventType {
+  SESSION_CREATED
+  SESSION_JOINED
+  SESSION_STARTED
+  SESSION_ENDED
+  ROLE_SWITCHED
+  CODE_EDITED
+  CHAT_MESSAGE
+  PEER_REVIEW_SUBMITTED
+  PROMPT_TRIGGERED
+  PARTICIPANT_LEFT
+}
+
+enum PromptType {
+  PARTICIPATION_IMBALANCE
+  WEAK_COMMUNICATION
+  WEAK_REVIEW_EXPLANATION
+  ROLE_SWITCH_REMINDER
+  ENCOURAGEMENT
+}
+
+enum ReviewStatus {
+  DRAFT
+  SUBMITTED
+}
+
+// ─── Models ──────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  username  String   @unique
+  password  String
+  role      Role     @default(STUDENT)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  sessionsCreated Session[]            @relation("SessionCreator")
+  participations  SessionParticipant[]
+  chatMessages    ChatMessage[]
+  reviewsGiven    PeerReview[]         @relation("ReviewGiver")
+  reviewsReceived PeerReview[]         @relation("ReviewReceiver")
+  reviewComments  ReviewComment[]
+
+  @@map("users")
+}
+
+model Session {
+  id          String        @id @default(cuid())
+  title       String
+  description String?
+  roomCode    String        @unique
+  status      SessionStatus @default(WAITING)
+  language    String        @default("javascript")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  startedAt   DateTime?
+  endedAt     DateTime?
+
+  // Current code state (persisted snapshot)
+  currentCode String @default("")
+
+  // Relations
+  creatorId    String
+  creator      User                 @relation("SessionCreator", fields: [creatorId], references: [id])
+  participants SessionParticipant[]
+  events       SessionEvent[]
+  chatMessages ChatMessage[]
+  peerReviews  PeerReview[]
+  promptEvents PromptEvent[]
+
+  @@map("sessions")
+}
+
+model SessionParticipant {
+  id       String    @id @default(cuid())
+  joinedAt DateTime  @default(now())
+  leftAt   DateTime?
+  pairRole PairRole  @default(OBSERVER)
+  isOnline Boolean   @default(true)
+
+  // Analytics counters
+  editCount       Int @default(0)
+  chatCount       Int @default(0)
+  roleSwitchCount Int @default(0)
+
+  userId    String
+  sessionId String
+  user      User    @relation(fields: [userId], references: [id])
+  session   Session @relation(fields: [sessionId], references: [id])
+
+  @@unique([userId, sessionId])
+  @@map("session_participants")
+}
+
+model SessionEvent {
+  id        String    @id @default(cuid())
+  type      EventType
+  payload   Json?
+  createdAt DateTime  @default(now())
+
+  sessionId String
+  userId    String?
+  session   Session @relation(fields: [sessionId], references: [id])
+
+  @@map("session_events")
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  content   String
+  createdAt DateTime @default(now())
+
+  sessionId String
+  userId    String
+  session   Session @relation(fields: [sessionId], references: [id])
+  user      User    @relation(fields: [userId], references: [id])
+
+  @@map("chat_messages")
+}
+
+model PeerReview {
+  id           String       @id @default(cuid())
+  status       ReviewStatus @default(DRAFT)
+  overallScore Int? // 1-5
+  explanation  String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  submittedAt  DateTime?
+
+  // Rubric scores (stored as flexible JSON)
+  rubricScores Json?
+
+  sessionId  String
+  reviewerId String
+  revieweeId String
+  session    Session         @relation(fields: [sessionId], references: [id])
+  reviewer   User            @relation("ReviewGiver", fields: [reviewerId], references: [id])
+  reviewee   User            @relation("ReviewReceiver", fields: [revieweeId], references: [id])
+  comments   ReviewComment[]
+
+  @@map("peer_reviews")
+}
+
+model ReviewComment {
+  id         String   @id @default(cuid())
+  lineNumber Int
+  content    String
+  createdAt  DateTime @default(now())
+
+  reviewId String
+  authorId String
+  review   PeerReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  author   User       @relation(fields: [authorId], references: [id])
+
+  @@map("review_comments")
+}
+
+model PromptEvent {
+  id           String     @id @default(cuid())
+  type         PromptType
+  message      String
+  targetRole   PairRole?
+  acknowledged Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+
+  sessionId String
+  session   Session @relation(fields: [sessionId], references: [id])
+
+  @@map("prompt_events")
+}
