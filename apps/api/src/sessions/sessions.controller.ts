@@ -23,10 +23,7 @@ export class SessionsController {
   constructor(private sessionsService: SessionsService) {}
 
   @Post()
-  create(
-    @CurrentUser() user: { id: string },
-    @Body() dto: CreateSessionDto,
-  ) {
+  create(@CurrentUser() user: { id: string }, @Body() dto: CreateSessionDto) {
     return this.sessionsService.create(user.id, dto);
   }
 

@@ -17,8 +17,23 @@ import { AnalyticsService } from '../analytics/analytics.service';
 import { PromptsService } from '../prompts/prompts.service';
 import { EventType, PairRole } from '@prisma/client';
 
+interface SocketUser {
+  id: string;
+  username: string;
+  role: string;
+}
+
+interface SocketData {
+  user: SocketUser;
+  sessionId: string;
+  pairRole: string;
+}
+
 @WebSocketGateway({
-  cors: { origin: process.env.CORS_ORIGIN || 'http://localhost:3000', credentials: true },
+  cors: {
+    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    credentials: true,
+  },
   namespace: '/collab',
 })
 export class CollaborationGateway
@@ -36,17 +51,21 @@ export class CollaborationGateway
     private promptsService: PromptsService,
   ) {}
 
-  async handleConnection(client: Socket) {
+  handleConnection(client: Socket) {
     this.logger.log(`Client connected: ${client.id}`);
   }
 
   async handleDisconnect(client: Socket) {
-    const user = client.data.user;
-    const sessionId = client.data.sessionId;
+    const socketData = client.data as Partial<SocketData>;
+    const user = socketData.user;
+    const sessionId = socketData.sessionId;
 
     if (user && sessionId) {
       await this.collaborationService.markOffline(user.id, sessionId);
-      client.to(sessionId).emit('participant:left', { userId: user.id, username: user.username });
+      client.to(sessionId).emit('participant:left', {
+        userId: user.id,
+        username: user.username,
+      });
       this.logger.log(`${user.username} left session ${sessionId}`);
     }
   }
@@ -58,19 +77,22 @@ export class CollaborationGateway
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { sessionId: string },
   ) {
-    const user = client.data.user;
+    const user = (client.data as SocketData).user;
     const { sessionId } = data;
 
     try {
       const session = await this.sessionsService.findById(sessionId);
-      const participant = session.participants.find((p) => p.userId === user.id);
+      const participant = session.participants.find(
+        (p) => p.userId === user.id,
+      );
 
-      if (!participant) throw new WsException('You are not a participant of this session');
+      if (!participant)
+        throw new WsException('You are not a participant of this session');
 
       // Join the Socket.IO room
       client.join(sessionId);
-      client.data.sessionId = sessionId;
-      client.data.pairRole = participant.pairRole;
+      (client.data as SocketData).sessionId = sessionId;
+      (client.data as SocketData).pairRole = participant.pairRole;
 
       // Mark as online
       await this.collaborationService.markOnline(user.id, sessionId);
@@ -92,7 +114,8 @@ export class CollaborationGateway
       this.logger.log(`${user.username} joined session room ${sessionId}`);
       return { success: true };
     } catch (err) {
-      throw new WsException(err.message);
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      throw new WsException(message);
     }
   }
 
@@ -103,11 +126,11 @@ export class CollaborationGateway
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { code: string; sessionId: string },
   ) {
-    const user = client.data.user;
+    const user = (client.data as SocketData).user;
     const { code, sessionId } = data;
 
     // Permission check: only Driver can push code changes
-    if (client.data.pairRole !== PairRole.DRIVER) {
+    if ((client.data as SocketData).pairRole !== PairRole.DRIVER) {
       throw new WsException('Only the Driver can edit code');
     }
 
@@ -118,15 +141,18 @@ export class CollaborationGateway
     await this.analyticsService.incrementEditCount(user.id, sessionId);
 
     // Log event
-    await this.sessionsService.logEvent(sessionId, user.id, EventType.CODE_EDITED, {
-      length: code.length,
-    });
+    await this.sessionsService.logEvent(
+      sessionId,
+      user.id,
+      EventType.CODE_EDITED,
+      { length: code.length },
+    );
 
     // Broadcast to everyone in the room
     client.to(sessionId).emit('code:update', { code, userId: user.id });
 
     // Run prompt rules (async — don't block)
-    this.promptsService
+    void this.promptsService
       .evaluateParticipation(sessionId)
       .then((prompt) => {
         if (prompt) {
@@ -143,18 +169,24 @@ export class CollaborationGateway
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { sessionId: string },
   ) {
-    const user = client.data.user;
+    const user = (client.data as SocketData).user;
     const { sessionId } = data;
 
-    const result = await this.collaborationService.switchRoles(user.id, sessionId);
+    const result = await this.collaborationService.switchRoles(
+      user.id,
+      sessionId,
+    );
 
     // Update local client data
-    client.data.pairRole = result.newRole;
+    (client.data as SocketData).pairRole = result.newRole;
 
     // Log event
-    await this.sessionsService.logEvent(sessionId, user.id, EventType.ROLE_SWITCHED, {
-      newRole: result.newRole,
-    });
+    await this.sessionsService.logEvent(
+      sessionId,
+      user.id,
+      EventType.ROLE_SWITCHED,
+      { newRole: result.newRole },
+    );
 
     // Increment role switch counter
     await this.analyticsService.incrementRoleSwitchCount(user.id, sessionId);
@@ -170,9 +202,10 @@ export class CollaborationGateway
   @SubscribeMessage('cursor:move')
   handleCursorMove(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { sessionId: string; line: number; column: number },
+    @MessageBody()
+    data: { sessionId: string; line: number; column: number },
   ) {
-    const user = client.data.user;
+    const user = (client.data as SocketData).user;
     client.to(data.sessionId).emit('cursor:update', {
       userId: user.id,
       username: user.username,

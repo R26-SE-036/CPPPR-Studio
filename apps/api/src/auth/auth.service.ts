@@ -34,7 +34,13 @@ export class AuthService {
         password: hashedPassword,
         role: dto.role,
       },
-      select: { id: true, email: true, username: true, role: true, createdAt: true },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        role: true,
+        createdAt: true,
+      },
     });
 
     const token = this.signToken(user.id, user.email);
@@ -51,14 +57,21 @@ export class AuthService {
     }
 
     const token = this.signToken(user.id, user.email);
-    const { password: _, ...safeUser } = user;
+    const { password, ...safeUser } = user;
+    void password; // excluded from response
     return { user: safeUser, token };
   }
 
   async me(userId: string) {
     return this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, username: true, role: true, createdAt: true },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        role: true,
+        createdAt: true,
+      },
     });
   }
 

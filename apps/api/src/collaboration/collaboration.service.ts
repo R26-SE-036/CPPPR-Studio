@@ -14,10 +14,12 @@ export class CollaborationService {
   }
 
   async markOffline(userId: string, sessionId: string) {
-    await this.prisma.sessionParticipant.update({
-      where: { userId_sessionId: { userId, sessionId } },
-      data: { isOnline: false, leftAt: new Date() },
-    }).catch(() => {}); // Silently fail if participant not found
+    await this.prisma.sessionParticipant
+      .update({
+        where: { userId_sessionId: { userId, sessionId } },
+        data: { isOnline: false, leftAt: new Date() },
+      })
+      .catch(() => {}); // Silently fail if participant not found
   }
 
   /**
@@ -35,16 +37,18 @@ export class CollaborationService {
 
     // Toggle Driver ↔ Navigator
     const newRole: PairRole =
-      requesting.pairRole === PairRole.DRIVER ? PairRole.NAVIGATOR : PairRole.DRIVER;
+      requesting.pairRole === PairRole.DRIVER
+        ? PairRole.NAVIGATOR
+        : PairRole.DRIVER;
 
     const updates = participants.map((p) => {
       if (p.userId === requestingUserId) return { ...p, pairRole: newRole };
       // Swap the other main participant
-      if (p.pairRole === PairRole.NAVIGATOR && newRole === PairRole.DRIVER) {
-        return { ...p, pairRole: PairRole.NAVIGATOR };
-      }
-      if (p.pairRole === PairRole.DRIVER && newRole === PairRole.NAVIGATOR) {
+      if (p.pairRole === PairRole.NAVIGATOR && newRole === PairRole.NAVIGATOR) {
         return { ...p, pairRole: PairRole.DRIVER };
+      }
+      if (p.pairRole === PairRole.DRIVER && newRole === PairRole.DRIVER) {
+        return { ...p, pairRole: PairRole.NAVIGATOR };
       }
       return p;
     });

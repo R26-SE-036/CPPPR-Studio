@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PromptType } from '@prisma/client';
 
 const IMBALANCE_THRESHOLD = 70; // If one person has >70% of edits → warn
-const WEAK_CHAT_THRESHOLD = 3;  // If chat count is very low → warn
+const WEAK_CHAT_THRESHOLD = 3; // If chat count is very low → warn
 const PROMPT_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes between same prompt type
 
 @Injectable()
@@ -33,9 +33,13 @@ export class PromptsService {
     for (const p of participants) {
       const percentage = (p.editCount / totalEdits) * 100;
       if (percentage > IMBALANCE_THRESHOLD) {
-        return this.maybeEmitPrompt(sessionId, PromptType.PARTICIPATION_IMBALANCE, {
-          message: `One participant is doing most of the coding. Consider switching roles or explaining your approach to your partner.`,
-        });
+        return this.maybeEmitPrompt(
+          sessionId,
+          PromptType.PARTICIPATION_IMBALANCE,
+          {
+            message: `One participant is doing most of the coding. Consider switching roles or explaining your approach to your partner.`,
+          },
+        );
       }
     }
 
@@ -58,9 +62,13 @@ export class PromptsService {
     explanation: string | null | undefined,
   ): Promise<{ type: PromptType; message: string } | null> {
     if (!explanation || explanation.trim().split(' ').length < 10) {
-      return this.maybeEmitPrompt(sessionId, PromptType.WEAK_REVIEW_EXPLANATION, {
-        message: `Your peer review explanation is brief. Try to be more specific — mention what was done well and what could be improved.`,
-      });
+      return this.maybeEmitPrompt(
+        sessionId,
+        PromptType.WEAK_REVIEW_EXPLANATION,
+        {
+          message: `Your peer review explanation is brief. Try to be more specific — mention what was done well and what could be improved.`,
+        },
+      );
     }
     return null;
   }

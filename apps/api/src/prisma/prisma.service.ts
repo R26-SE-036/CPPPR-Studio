@@ -1,32 +1,3 @@
-// import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-// import { PrismaClient } from '@prisma/client';
-
-// @Injectable()
-// export class PrismaService
-//   extends PrismaClient
-//   implements OnModuleInit, OnModuleDestroy
-// {
-//   async onModuleInit() {
-//     await this.$connect();
-//   }
-
-//   async onModuleDestroy() {
-//     await this.$disconnect();
-//   }
-// }
-
-// import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-// import { PrismaClient } from '@prisma/client';
-
-// @Injectable()
-// export class PrismaService
-//   extends PrismaClient
-//   implements OnModuleInit, OnModuleDestroy
-// {
-//   constructor() {
-//     // Pass explicit (even if empty) options to satisfy Prisma v7+ constructor requirement
-//     super({
-//       log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -42,10 +13,11 @@ export class PrismaService
       connectionString: process.env.DATABASE_URL,
     });
     const adapter = new PrismaPg(pool);
-    
+
     super({
       adapter,
-      log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+      log:
+        process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
     });
   }
 

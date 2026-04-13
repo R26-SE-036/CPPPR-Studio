@@ -14,8 +14,22 @@ import { AnalyticsService } from '../analytics/analytics.service';
 import { SessionsService } from '../sessions/sessions.service';
 import { EventType } from '@prisma/client';
 
+interface SocketUser {
+  id: string;
+  username: string;
+  role: string;
+}
+
+interface SocketData {
+  user: SocketUser;
+  sessionId: string;
+}
+
 @WebSocketGateway({
-  cors: { origin: process.env.CORS_ORIGIN || 'http://localhost:3000', credentials: true },
+  cors: {
+    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    credentials: true,
+  },
   namespace: '/chat',
 })
 export class ChatGateway implements OnGatewayConnection {
@@ -40,8 +54,8 @@ export class ChatGateway implements OnGatewayConnection {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { sessionId: string },
   ) {
-    client.join(data.sessionId);
-    client.data.sessionId = data.sessionId;
+    await client.join(data.sessionId);
+    (client.data as SocketData).sessionId = data.sessionId;
 
     const history = await this.chatService.getHistory(data.sessionId);
     client.emit('chat:history', history);
@@ -55,7 +69,7 @@ export class ChatGateway implements OnGatewayConnection {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { sessionId: string; content: string },
   ) {
-    const user = client.data.user;
+    const user = (client.data as SocketData).user;
     if (!data.content?.trim()) return;
 
     const message = await this.chatService.saveMessage(

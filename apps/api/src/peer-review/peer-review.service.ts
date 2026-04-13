@@ -38,7 +38,9 @@ export class PeerReviewService {
 
     // Replace all line comments if provided
     if (comments?.length) {
-      await this.prisma.reviewComment.deleteMany({ where: { reviewId: review.id } });
+      await this.prisma.reviewComment.deleteMany({
+        where: { reviewId: review.id },
+      });
       await this.prisma.reviewComment.createMany({
         data: comments.map((c) => ({
           reviewId: review.id,

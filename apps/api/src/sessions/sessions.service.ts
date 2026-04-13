@@ -40,7 +40,9 @@ export class SessionsService {
     });
 
     // Log event
-    await this.logEvent(session.id, userId, EventType.SESSION_CREATED, { roomCode });
+    await this.logEvent(session.id, userId, EventType.SESSION_CREATED, {
+      roomCode,
+    });
 
     return session;
   }
@@ -110,7 +112,9 @@ export class SessionsService {
   async updateStatus(sessionId: string, userId: string, status: SessionStatus) {
     const session = await this.findById(sessionId);
     if (session.creatorId !== userId) {
-      throw new ForbiddenException('Only the session creator can update status');
+      throw new ForbiddenException(
+        'Only the session creator can update status',
+      );
     }
 
     const data: Record<string, unknown> = { status };
