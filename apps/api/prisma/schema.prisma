@@ -74,12 +74,13 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relations
-  sessionsCreated Session[]            @relation("SessionCreator")
-  participations  SessionParticipant[]
-  chatMessages    ChatMessage[]
-  reviewsGiven    PeerReview[]         @relation("ReviewGiver")
-  reviewsReceived PeerReview[]         @relation("ReviewReceiver")
-  reviewComments  ReviewComment[]
+  sessionsCreated  Session[]            @relation("SessionCreator")
+  participations   SessionParticipant[]
+  chatMessages     ChatMessage[]
+  reviewsGiven     PeerReview[]         @relation("ReviewGiver")
+  reviewsReceived  PeerReview[]         @relation("ReviewReceiver")
+  reviewComments   ReviewComment[]
+  aiConversations  AiConversation[]
 
   @@map("users")
 }
@@ -107,6 +108,11 @@ model Session {
   chatMessages ChatMessage[]
   peerReviews  PeerReview[]
   promptEvents PromptEvent[]
+
+  // AI relations
+  aiEmbeddings           AiEmbedding[]
+  aiConversations        AiConversation[]
+  collaborationAnalyses  CollaborationAnalysis[]
 
   @@map("sessions")
 }
@@ -207,4 +213,61 @@ model PromptEvent {
   session   Session @relation(fields: [sessionId], references: [id])
 
   @@map("prompt_events")
+}
+
+// ─── AI Models ───────────────────────────────────────────────
+
+model AiEmbedding {
+  id         String   @id @default(cuid())
+  content    String   // Original text chunk
+  sourceType String   // 'chat' | 'event' | 'review' | 'code'
+  sourceId   String   // ID of the source record
+  embedding  Unsupported("vector(1536)") // pgvector column
+  createdAt  DateTime @default(now())
+
+  sessionId  String
+  session    Session  @relation(fields: [sessionId], references: [id])
+
+  @@map("ai_embeddings")
+}
+
+model AiConversation {
+  id        String      @id @default(cuid())
+  createdAt DateTime    @default(now())
+
+  sessionId String
+  userId    String
+  session   Session     @relation(fields: [sessionId], references: [id])
+  user      User        @relation(fields: [userId], references: [id])
+  messages  AiMessage[]
+
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id        String   @id @default(cuid())
+  role      String   // 'user' | 'assistant'
+  content   String
+  createdAt DateTime @default(now())
+
+  conversationId String
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("ai_messages")
+}
+
+model CollaborationAnalysis {
+  id                 String   @id @default(cuid())
+  communicationScore Float
+  participationScore Float
+  reviewQualityScore Float
+  overallScore       Float
+  suggestions        Json     // Array of suggestion strings
+  rawMetrics         Json     // Full metrics snapshot
+  createdAt          DateTime @default(now())
+
+  sessionId          String
+  session            Session  @relation(fields: [sessionId], references: [id])
+
+  @@map("collaboration_analyses")
 }

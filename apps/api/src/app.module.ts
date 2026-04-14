@@ -11,6 +11,7 @@ import { PeerReviewModule } from './peer-review/peer-review.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { PromptsModule } from './prompts/prompts.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { AiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     AnalyticsModule,
     PromptsModule,
     DashboardModule,
+    AiModule,
   ],
 })
 export class AppModule {}

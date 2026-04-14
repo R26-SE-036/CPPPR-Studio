@@ -9,9 +9,14 @@ interface CodeEditorProps {
   readOnly: boolean;
 }
 
-export default function CodeEditor({ code, language, onChange, readOnly }: CodeEditorProps) {
+export default function CodeEditor({
+  code,
+  language,
+  onChange,
+  readOnly,
+}: CodeEditorProps) {
   return (
-    <div className="h-full w-full">
+    <div className="h-full w-full relative">
       <Editor
         height="100%"
         language={language}
@@ -30,8 +35,8 @@ export default function CodeEditor({ code, language, onChange, readOnly }: CodeE
         }}
       />
       {readOnly && (
-        <div className="absolute top-2 right-4 bg-purple-700 text-white text-xs px-2 py-1 rounded">
-          Navigator — read only
+        <div className="absolute top-2 right-4 bg-gray-700 text-gray-300 text-xs px-2 py-1 rounded">
+          Read only
         </div>
       )}
     </div>

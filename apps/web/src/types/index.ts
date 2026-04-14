@@ -54,3 +54,39 @@ export interface ReviewComment {
   lineNumber: number;
   content: string;
 }
+
+// ─── AI Types ────────────────────────────────────────────────
+
+export interface AiMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+}
+
+export interface AiAskResponse {
+  answer: string;
+  conversationId: string;
+}
+
+export interface AiExplanationResponse {
+  explanation: string;
+}
+
+export interface AiImproveResponse {
+  original: string;
+  improved: string;
+}
+
+export interface AiSummaryResponse {
+  summary: string;
+}
+
+export interface QualityScores {
+  communicationScore: number;
+  participationScore: number;
+  reviewQualityScore: number;
+  overallCollaborationScore: number;
+  suggestions: string[];
+  rawMetrics: Record<string, unknown>;
+}

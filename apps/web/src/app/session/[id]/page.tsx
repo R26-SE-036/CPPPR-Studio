@@ -11,10 +11,22 @@ import { PromptBanner } from '@/components/PromptBanner';
 import { ChatPanel } from '@/components/ChatPanel';
 import { ParticipantsPanel } from '@/components/ParticipantsPanel';
 import { ReviewPanel } from '@/components/ReviewPanel';
-import { ArrowLeftRight, MessageSquare, Users, Star, Code2 } from 'lucide-react';
+import { AiAssistantPanel } from '@/components/AiAssistantPanel';
+import { CollaborationInsights } from '@/components/CollaborationInsights';
+import {
+  ArrowLeftRight,
+  MessageSquare,
+  Users,
+  Star,
+  Code2,
+  Bot,
+  BarChart3,
+} from 'lucide-react';
 
 // Monaco must be dynamically imported (browser-only)
-const MonacoEditor = dynamic(() => import('@/components/CodeEditor'), { ssr: false });
+const MonacoEditor = dynamic(() => import('@/components/CodeEditor'), {
+  ssr: false,
+});
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:4000';
 
@@ -28,28 +40,56 @@ export default function SessionPage() {
   const [code, setCode] = useState('// Start coding here...');
   const [myRole, setMyRole] = useState<PairRole>('OBSERVER');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [activePanel, setActivePanel] = useState<'chat' | 'participants' | 'review'>('chat');
+  const [activePanel, setActivePanel] = useState<
+    'chat' | 'participants' | 'review' | 'ai' | 'insights'
+  >('chat');
   const [prompt, setPrompt] = useState<Prompt | null>(null);
   const [loading, setLoading] = useState(true);
 
   const collabSocket = useRef<Socket | null>(null);
   const chatSocket = useRef<Socket | null>(null);
 
+  /**
+   * Helper: extract current user's role from a session object.
+   * This is the SINGLE source of truth for role state on the frontend.
+   */
+  const extractMyRole = useCallback(
+    (sessionData: Session): PairRole => {
+      const me = sessionData.participants.find(
+        (p) => p.userId === user?.id,
+      );
+      return me ? me.pairRole : 'OBSERVER';
+    },
+    [user],
+  );
+
+  /**
+   * Helper: fetch fresh session from API and update BOTH session + myRole.
+   * Used after join/leave events to always be authoritative from backend.
+   */
+  const refreshSession = useCallback(() => {
+    api.get(`/sessions/${sessionId}`).then((res) => {
+      const sessionData = res.data as Session;
+      setSession(sessionData);
+      setMyRole(extractMyRole(sessionData));
+    });
+  }, [sessionId, extractMyRole]);
+
   // Fetch initial session data
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || !user) return;
     api.get(`/sessions/${sessionId}`).then((res) => {
-      setSession(res.data);
-      setCode(res.data.currentCode || '// Start coding here...');
-      const me = res.data.participants.find((p: { userId: string }) => p.userId === user?.id);
-      if (me) setMyRole(me.pairRole);
+      const sessionData = res.data as Session;
+      setSession(sessionData);
+      setCode(sessionData.currentCode || '// Start coding here...');
+      setMyRole(extractMyRole(sessionData));
       setLoading(false);
     });
-  }, [sessionId, user]);
+  }, [sessionId, user, extractMyRole]);
 
   // Setup WebSocket connections
   useEffect(() => {
-    if (!token || !sessionId) return;
+    if (!token || !sessionId || !user) return;
 
     // Collab socket
     collabSocket.current = io(`${WS_URL}/collab`, {
@@ -59,36 +99,62 @@ export default function SessionPage() {
 
     collabSocket.current.emit('session:join', { sessionId });
 
-    collabSocket.current.on('session:state', (data: { code: string }) => {
-      setCode(data.code);
-    });
+    // session:state — initial state from gateway; set code AND role
+    collabSocket.current.on(
+      'session:state',
+      (data: {
+        code: string;
+        language: string;
+        participants: Array<{ userId: string; pairRole: PairRole }>;
+      }) => {
+        setCode(data.code);
+        const me = data.participants.find((p) => p.userId === user.id);
+        if (me) setMyRole(me.pairRole);
+      },
+    );
 
     collabSocket.current.on('code:update', (data: { code: string }) => {
       setCode(data.code);
     });
 
-    collabSocket.current.on('role:updated', (participants: Array<{ userId: string; pairRole: PairRole }>) => {
-      const me = participants.find((p) => p.userId === user?.id);
-      if (me) setMyRole(me.pairRole);
-      setSession((prev) =>
-        prev
-          ? {
-              ...prev,
-              participants: prev.participants.map((p) => {
-                const updated = participants.find((u) => u.userId === p.userId);
-                return updated ? { ...p, pairRole: updated.pairRole } : p;
-              }),
-            }
-          : prev,
-      );
-    });
+    // role:updated — authoritative role update from backend
+    collabSocket.current.on(
+      'role:updated',
+      (
+        participants: Array<{
+          userId: string;
+          username: string;
+          pairRole: PairRole;
+        }>,
+      ) => {
+        const me = participants.find((p) => p.userId === user.id);
+        if (me) setMyRole(me.pairRole);
+        setSession((prev) =>
+          prev
+            ? {
+                ...prev,
+                participants: prev.participants.map((p) => {
+                  const updated = participants.find(
+                    (u) => u.userId === p.userId,
+                  );
+                  return updated
+                    ? { ...p, pairRole: updated.pairRole }
+                    : p;
+                }),
+              }
+            : prev,
+        );
+      },
+    );
 
+    // participant:joined — refetch full session to get accurate participant list + roles
     collabSocket.current.on('participant:joined', () => {
-      api.get(`/sessions/${sessionId}`).then((res) => setSession(res.data));
+      refreshSession();
     });
 
+    // participant:left — refetch full session to get accurate state
     collabSocket.current.on('participant:left', () => {
-      api.get(`/sessions/${sessionId}`).then((res) => setSession(res.data));
+      refreshSession();
     });
 
     collabSocket.current.on('prompt:new', (p: Prompt) => {
@@ -115,13 +181,16 @@ export default function SessionPage() {
       collabSocket.current?.disconnect();
       chatSocket.current?.disconnect();
     };
-  }, [token, sessionId, user]);
+  }, [token, sessionId, user, refreshSession]);
 
   const handleCodeChange = useCallback(
     (value: string | undefined) => {
       if (!value || myRole !== 'DRIVER') return;
       setCode(value);
-      collabSocket.current?.emit('code:change', { code: value, sessionId });
+      collabSocket.current?.emit('code:change', {
+        code: value,
+        sessionId,
+      });
     },
     [myRole, sessionId],
   );
@@ -135,42 +204,65 @@ export default function SessionPage() {
   };
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-gray-500">Loading session...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center text-gray-500">
+        Loading session...
+      </div>
+    );
   }
 
   if (!session) {
-    return <div className="min-h-screen flex items-center justify-center text-red-500">Session not found</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center text-red-500">
+        Session not found
+      </div>
+    );
   }
 
   const isDriver = myRole === 'DRIVER';
+
+  // Role badge color: DRIVER=blue, NAVIGATOR=purple, OBSERVER=gray
+  const roleBadgeClass =
+    myRole === 'DRIVER'
+      ? 'bg-blue-600 text-white'
+      : myRole === 'NAVIGATOR'
+        ? 'bg-purple-600 text-white'
+        : 'bg-gray-600 text-gray-200';
 
   return (
     <div className="h-screen flex flex-col bg-gray-900">
       {/* Header */}
       <header className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white">
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="text-gray-400 hover:text-white"
+          >
             <Code2 size={20} />
           </button>
           <span className="text-white font-medium">{session.title}</span>
-          <span className="text-gray-500 font-mono text-sm">{session.roomCode}</span>
+          <span className="text-gray-500 font-mono text-sm">
+            {session.roomCode}
+          </span>
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Role badge */}
-          <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-            isDriver ? 'bg-blue-600 text-white' : 'bg-purple-600 text-white'
-          }`}>
+          {/* Role badge — uses distinct colors for all 3 roles */}
+          <span
+            className={`px-3 py-1 rounded-full text-xs font-bold ${roleBadgeClass}`}
+          >
             {myRole}
           </span>
 
-          {/* Role switch button */}
-          <button
-            onClick={handleRoleSwitch}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700 text-gray-200 rounded-lg text-sm hover:bg-gray-600 transition-colors"
-          >
-            <ArrowLeftRight size={14} /> Switch role
-          </button>
+          {/* Role switch button — only show for DRIVER/NAVIGATOR */}
+          {(myRole === 'DRIVER' || myRole === 'NAVIGATOR') && (
+            <button
+              onClick={handleRoleSwitch}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700 text-gray-200 rounded-lg text-sm hover:bg-gray-600 transition-colors"
+            >
+              <ArrowLeftRight size={14} /> Switch role
+            </button>
+          )}
         </div>
       </header>
 
@@ -199,10 +291,14 @@ export default function SessionPage() {
               { key: 'chat', icon: MessageSquare, label: 'Chat' },
               { key: 'participants', icon: Users, label: 'People' },
               { key: 'review', icon: Star, label: 'Review' },
+              { key: 'ai', icon: Bot, label: 'AI' },
+              { key: 'insights', icon: BarChart3, label: 'Insights' },
             ].map(({ key, icon: Icon, label }) => (
               <button
                 key={key}
-                onClick={() => setActivePanel(key as typeof activePanel)}
+                onClick={() =>
+                  setActivePanel(key as typeof activePanel)
+                }
                 className={`flex-1 flex flex-col items-center gap-1 py-2.5 text-xs transition-colors ${
                   activePanel === key
                     ? 'text-blue-400 border-b-2 border-blue-400'
@@ -237,6 +333,12 @@ export default function SessionPage() {
                 currentUserId={user?.id || ''}
                 code={code}
               />
+            )}
+            {activePanel === 'ai' && (
+              <AiAssistantPanel sessionId={sessionId} />
+            )}
+            {activePanel === 'insights' && (
+              <CollaborationInsights sessionId={sessionId} />
             )}
           </div>
         </div>

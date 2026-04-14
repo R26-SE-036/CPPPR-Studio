@@ -1,4 +1,10 @@
-import { IsString, IsOptional, MinLength, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  MinLength,
+  MaxLength,
+  IsIn,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateSessionDto {
@@ -13,8 +19,9 @@ export class CreateSessionDto {
   @IsOptional()
   description?: string;
 
-  @ApiProperty({ default: 'javascript', required: false })
+  @ApiProperty({ default: 'java', required: false })
   @IsString()
   @IsOptional()
+  @IsIn(['java'], { message: 'Only Java is supported as a language' })
   language?: string;
 }

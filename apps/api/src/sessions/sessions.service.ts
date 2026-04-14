@@ -21,7 +21,7 @@ export class SessionsService {
       data: {
         title: dto.title,
         description: dto.description,
-        language: dto.language || 'javascript',
+        language: dto.language || 'java',
         roomCode,
         creatorId: userId,
         participants: {
@@ -66,11 +66,27 @@ export class SessionsService {
         data: { isOnline: true, leftAt: null },
       });
     } else {
+      // Determine the right role for the new participant
+      const activeParticipants = session.participants.filter((p) => !p.leftAt);
+      const hasDriver = activeParticipants.some((p) => p.pairRole === 'DRIVER');
+      const hasNavigator = activeParticipants.some(
+        (p) => p.pairRole === 'NAVIGATOR',
+      );
+
+      let assignedRole: 'DRIVER' | 'NAVIGATOR' | 'OBSERVER';
+      if (!hasDriver) {
+        assignedRole = 'DRIVER';
+      } else if (!hasNavigator) {
+        assignedRole = 'NAVIGATOR';
+      } else {
+        assignedRole = 'OBSERVER';
+      }
+
       await this.prisma.sessionParticipant.create({
         data: {
           userId,
           sessionId: session.id,
-          pairRole: 'NAVIGATOR', // Second person is Navigator by default
+          pairRole: assignedRole,
         },
       });
     }

@@ -29,6 +29,10 @@ interface SocketData {
   pairRole: string;
 }
 
+// Debounce tracking: sessionId → last switch timestamp
+const roleSwitchCooldowns = new Map<string, number>();
+const ROLE_SWITCH_COOLDOWN_MS = 2000; // 2 seconds
+
 @WebSocketGateway({
   cors: {
     origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
@@ -61,12 +65,44 @@ export class CollaborationGateway
     const sessionId = socketData.sessionId;
 
     if (user && sessionId) {
+      const wasDriver = socketData.pairRole === PairRole.DRIVER;
+
       await this.collaborationService.markOffline(user.id, sessionId);
+
       client.to(sessionId).emit('participant:left', {
         userId: user.id,
         username: user.username,
       });
+
       this.logger.log(`${user.username} left session ${sessionId}`);
+
+      // DRIVER failover: if the disconnecting user was DRIVER,
+      // promote the first online NAVIGATOR
+      if (wasDriver) {
+        const failover =
+          await this.collaborationService.promoteNextDriver(sessionId);
+
+        if (failover) {
+          // Update all remaining sockets in the room
+          this.updateSocketRolesInRoom(sessionId, failover.participants);
+
+          // Log the automatic event
+          await this.sessionsService.logEvent(
+            sessionId,
+            null,
+            EventType.ROLE_SWITCHED,
+            {
+              reason: 'driver_disconnect_failover',
+              promoted: failover.switchedUserIds,
+            },
+          );
+
+          // Broadcast updated roles to all remaining participants
+          this.server.to(sessionId).emit('role:updated', failover.participants);
+
+          this.logger.log(`DRIVER failover triggered in session ${sessionId}`);
+        }
+      }
     }
   }
 
@@ -111,7 +147,9 @@ export class CollaborationGateway
         pairRole: participant.pairRole,
       });
 
-      this.logger.log(`${user.username} joined session room ${sessionId}`);
+      this.logger.log(
+        `${user.username} joined session room ${sessionId} as ${participant.pairRole}`,
+      );
       return { success: true };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
@@ -172,13 +210,23 @@ export class CollaborationGateway
     const user = (client.data as SocketData).user;
     const { sessionId } = data;
 
+    // Debounce: prevent rapid switching spam
+    const lastSwitch = roleSwitchCooldowns.get(sessionId) ?? 0;
+    const now = Date.now();
+    if (now - lastSwitch < ROLE_SWITCH_COOLDOWN_MS) {
+      throw new WsException(
+        'Role switch is on cooldown. Please wait a moment.',
+      );
+    }
+    roleSwitchCooldowns.set(sessionId, now);
+
     const result = await this.collaborationService.switchRoles(
       user.id,
       sessionId,
     );
 
-    // Update local client data
-    (client.data as SocketData).pairRole = result.newRole;
+    // Update ALL sockets in the room with their new pairRole
+    this.updateSocketRolesInRoom(sessionId, result.participants);
 
     // Log event
     await this.sessionsService.logEvent(
@@ -188,8 +236,13 @@ export class CollaborationGateway
       { newRole: result.newRole },
     );
 
-    // Increment role switch counter
-    await this.analyticsService.incrementRoleSwitchCount(user.id, sessionId);
+    // Increment role switch counter for ALL participants whose role changed
+    for (const switchedUserId of result.switchedUserIds) {
+      await this.analyticsService.incrementRoleSwitchCount(
+        switchedUserId,
+        sessionId,
+      );
+    }
 
     // Broadcast new role assignments to everyone in room
     this.server.to(sessionId).emit('role:updated', result.participants);
@@ -212,5 +265,27 @@ export class CollaborationGateway
       line: data.line,
       column: data.column,
     });
+  }
+
+  // ── Helper: update pairRole on ALL sockets in a session room ──
+  private updateSocketRolesInRoom(
+    sessionId: string,
+    participants: { userId: string; pairRole: PairRole }[],
+  ) {
+    const room = this.server.sockets.adapter.rooms.get(sessionId);
+    if (!room) return;
+
+    for (const socketId of room) {
+      const socket = this.server.sockets.sockets.get(socketId);
+      if (!socket) continue;
+
+      const socketUser = (socket.data as Partial<SocketData>).user;
+      if (!socketUser) continue;
+
+      const match = participants.find((p) => p.userId === socketUser.id);
+      if (match) {
+        (socket.data as SocketData).pairRole = match.pairRole;
+      }
+    }
   }
 }
