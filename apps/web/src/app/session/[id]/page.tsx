@@ -49,58 +49,79 @@ export default function SessionPage() {
   const collabSocket = useRef<Socket | null>(null);
   const chatSocket = useRef<Socket | null>(null);
 
+  // Monotonic counter to prevent stale REST responses from overwriting
+  // fresh WebSocket-delivered state. Incremented on every WS role event.
+  const roleVersionRef = useRef(0);
+
+  // Stable user ID ref — avoids re-creating closures when user object changes
+  const userIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    userIdRef.current = user?.id ?? null;
+  }, [user]);
+
   /**
-   * Helper: extract current user's role from a session object.
-   * This is the SINGLE source of truth for role state on the frontend.
+   * Apply a role update. Only succeeds if the version is >= current,
+   * preventing stale REST responses from overwriting live WS data.
    */
-  const extractMyRole = useCallback(
-    (sessionData: Session): PairRole => {
-      const me = sessionData.participants.find(
-        (p) => p.userId === user?.id,
-      );
-      return me ? me.pairRole : 'OBSERVER';
+  const applyRoleUpdate = useCallback(
+    (
+      participants: Array<{ userId: string; pairRole: PairRole; [k: string]: unknown }>,
+      version: number,
+    ) => {
+      if (version < roleVersionRef.current) return; // stale — discard
+      roleVersionRef.current = version;
+
+      const uid = userIdRef.current;
+      if (!uid) return;
+
+      const me = participants.find((p) => p.userId === uid);
+      if (me) setMyRole(me.pairRole);
+
+      setSession((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          participants: prev.participants.map((p) => {
+            const updated = participants.find((u) => u.userId === p.userId);
+            return updated ? { ...p, pairRole: updated.pairRole } : p;
+          }),
+        };
+      });
     },
-    [user],
+    [],
   );
 
-  /**
-   * Helper: fetch fresh session from API and update BOTH session + myRole.
-   * Used after join/leave events to always be authoritative from backend.
-   */
-  const refreshSession = useCallback(() => {
-    api.get(`/sessions/${sessionId}`).then((res) => {
-      const sessionData = res.data as Session;
-      setSession(sessionData);
-      setMyRole(extractMyRole(sessionData));
-    });
-  }, [sessionId, extractMyRole]);
-
-  // Fetch initial session data
+  // Fetch initial session data (runs once)
   useEffect(() => {
     if (!sessionId || !user) return;
     api.get(`/sessions/${sessionId}`).then((res) => {
-      const sessionData = res.data as Session;
-      setSession(sessionData);
-      setCode(sessionData.currentCode || '// Start coding here...');
-      setMyRole(extractMyRole(sessionData));
+      const s = res.data as Session;
+      setSession(s);
+      setCode(s.currentCode || '// Start coding here...');
+      const me = s.participants.find((p) => p.userId === user.id);
+      if (me) setMyRole(me.pairRole);
       setLoading(false);
     });
-  }, [sessionId, user, extractMyRole]);
+    // Only run on mount — sessionId and user.id are stable
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, user?.id]);
 
-  // Setup WebSocket connections
+  // Setup WebSocket connections (runs once after token is available)
   useEffect(() => {
     if (!token || !sessionId || !user) return;
+    const uid = user.id;
 
-    // Collab socket
-    collabSocket.current = io(`${WS_URL}/collab`, {
+    // ── Collab socket ──────────────────────────────────────────
+    const collab = io(`${WS_URL}/collab`, {
       auth: { token },
       transports: ['websocket'],
     });
+    collabSocket.current = collab;
 
-    collabSocket.current.emit('session:join', { sessionId });
+    collab.emit('session:join', { sessionId });
 
-    // session:state — initial state from gateway; set code AND role
-    collabSocket.current.on(
+    // session:state — initial state from gateway after join
+    collab.on(
       'session:state',
       (data: {
         code: string;
@@ -108,17 +129,18 @@ export default function SessionPage() {
         participants: Array<{ userId: string; pairRole: PairRole }>;
       }) => {
         setCode(data.code);
-        const me = data.participants.find((p) => p.userId === user.id);
+        // Use version 0 so any subsequent WS event wins
+        const me = data.participants.find((p) => p.userId === uid);
         if (me) setMyRole(me.pairRole);
       },
     );
 
-    collabSocket.current.on('code:update', (data: { code: string }) => {
+    collab.on('code:update', (data: { code: string }) => {
       setCode(data.code);
     });
 
-    // role:updated — authoritative role update from backend
-    collabSocket.current.on(
+    // role:updated — authoritative live role update from backend
+    collab.on(
       'role:updated',
       (
         participants: Array<{
@@ -127,61 +149,75 @@ export default function SessionPage() {
           pairRole: PairRole;
         }>,
       ) => {
-        const me = participants.find((p) => p.userId === user.id);
-        if (me) setMyRole(me.pairRole);
-        setSession((prev) =>
-          prev
-            ? {
-                ...prev,
-                participants: prev.participants.map((p) => {
-                  const updated = participants.find(
-                    (u) => u.userId === p.userId,
-                  );
-                  return updated
-                    ? { ...p, pairRole: updated.pairRole }
-                    : p;
-                }),
-              }
-            : prev,
-        );
+        // Bump version so this always takes priority over REST fetches
+        applyRoleUpdate(participants, roleVersionRef.current + 1);
       },
     );
 
-    // participant:joined — refetch full session to get accurate participant list + roles
-    collabSocket.current.on('participant:joined', () => {
-      refreshSession();
+    // participant:joined — fetch fresh participant list
+    collab.on('participant:joined', () => {
+      api.get(`/sessions/${sessionId}`).then((res) => {
+        const s = res.data as Session;
+        setSession(s);
+        // Use current version (not bumping) — WS events still win
+        const me = s.participants.find((p) => p.userId === uid);
+        if (me) {
+          applyRoleUpdate(
+            s.participants.map((p) => ({
+              userId: p.userId,
+              pairRole: p.pairRole,
+            })),
+            roleVersionRef.current,
+          );
+        }
+      });
     });
 
-    // participant:left — refetch full session to get accurate state
-    collabSocket.current.on('participant:left', () => {
-      refreshSession();
+    // participant:left — fetch fresh participant list
+    collab.on('participant:left', () => {
+      api.get(`/sessions/${sessionId}`).then((res) => {
+        const s = res.data as Session;
+        setSession(s);
+        applyRoleUpdate(
+          s.participants.map((p) => ({
+            userId: p.userId,
+            pairRole: p.pairRole,
+          })),
+          roleVersionRef.current,
+        );
+      });
     });
 
-    collabSocket.current.on('prompt:new', (p: Prompt) => {
+    collab.on('prompt:new', (p: Prompt) => {
       setPrompt(p);
     });
 
-    // Chat socket
-    chatSocket.current = io(`${WS_URL}/chat`, {
+    // ── Chat socket ────────────────────────────────────────────
+    const chat = io(`${WS_URL}/chat`, {
       auth: { token },
       transports: ['websocket'],
     });
+    chatSocket.current = chat;
 
-    chatSocket.current.emit('chat:join', { sessionId });
+    chat.emit('chat:join', { sessionId });
 
-    chatSocket.current.on('chat:history', (history: ChatMessage[]) => {
+    chat.on('chat:history', (history: ChatMessage[]) => {
       setMessages(history);
     });
 
-    chatSocket.current.on('chat:message', (msg: ChatMessage) => {
+    chat.on('chat:message', (msg: ChatMessage) => {
       setMessages((prev) => [...prev, msg]);
     });
 
     return () => {
-      collabSocket.current?.disconnect();
-      chatSocket.current?.disconnect();
+      collab.disconnect();
+      chat.disconnect();
+      collabSocket.current = null;
+      chatSocket.current = null;
     };
-  }, [token, sessionId, user, refreshSession]);
+    // Only re-run if token or sessionId change (not user object ref)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, sessionId, user?.id, applyRoleUpdate]);
 
   const handleCodeChange = useCallback(
     (value: string | undefined) => {
