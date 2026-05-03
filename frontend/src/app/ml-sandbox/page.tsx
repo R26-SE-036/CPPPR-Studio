@@ -40,6 +40,19 @@ export default function SandboxPage() {
 
       setIntervention(interventionRes.data);
 
+      // 3. Fetch RAG hint if applicable
+      if (interventionRes.data.action === "RAG_HINT_DELIVERY") {
+        const hintRes = await axios.post("http://localhost:8000/retrieve-hint", {
+          sessionId: "sandbox-session",
+          predictedState: stateRes.data.predictedState,
+          interventionType: "LOGIC_HINT",
+          questionConceptTags: ["arrays", "loops"],
+          recentErrorContext: "Sandbox test error",
+          recentCodeSnippet: "Sandbox test snippet"
+        });
+        setIntervention((prev: any) => ({ ...prev, hint: hintRes.data }));
+      }
+
     } catch (err) {
       console.error(err);
       alert("Failed to connect to ML Service on port 8000. Is it running?");
@@ -168,6 +181,31 @@ export default function SandboxPage() {
                         "{intervention.delivery.message}"
                       </div>
                     </div>
+                    
+                    {intervention.hint && (
+                      <div className="mt-4 space-y-3 pt-4 border-t border-indigo-500/30">
+                        <p className="text-sm text-indigo-400 font-semibold mb-2">Generated RAG-lite Hint</p>
+                        
+                        <div className="p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+                          <p className="text-xs text-blue-400 font-semibold mb-1">Concept Reminder</p>
+                          <p className="text-sm text-zinc-200">{intervention.hint.conceptReminder}</p>
+                        </div>
+                        
+                        <div className="p-3 bg-emerald-900/20 border border-emerald-500/30 rounded-lg">
+                          <p className="text-xs text-emerald-400 font-semibold mb-1">Example Idea</p>
+                          <p className="text-sm text-zinc-200">{intervention.hint.exampleIdea}</p>
+                        </div>
+                        
+                        <div className="p-3 bg-amber-900/20 border border-amber-500/30 rounded-lg">
+                          <p className="text-xs text-amber-400 font-semibold mb-1">Reflective Question</p>
+                          <p className="text-sm text-zinc-200">{intervention.hint.reflectiveQuestion}</p>
+                        </div>
+                        
+                        {intervention.hint.fallbackUsed && (
+                          <p className="text-xs text-rose-400 mt-2 italic">* Fallback used (no exact chunks retrieved)</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

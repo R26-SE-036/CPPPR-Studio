@@ -5,7 +5,8 @@ from app.schemas.interventions import RecommendInterventionRequest, RecommendInt
 from app.schemas.hints import RetrieveHintRequest, RetrieveHintResponse
 from app.models.predictor import PairStatePredictor
 from app.models.intervention_engine import InterventionEngine
-from app.models.rag_retriever import RAGRetriever
+from app.rag import RAGService
+from app.rag.schemas import RAGHintRequest, RAGHintResponse
 
 app = FastAPI(
     title="Pair Programming ML Service",
@@ -25,7 +26,7 @@ app.add_middleware(
 # Initialize components
 predictor = PairStatePredictor()
 intervention_engine = InterventionEngine()
-rag_retriever = RAGRetriever()
+rag_service = RAGService()
 
 @app.post("/predict-pair-state", response_model=PredictPairStateResponse)
 async def predict_pair_state(request: PredictPairStateRequest):
@@ -73,25 +74,26 @@ async def recommend_intervention(request: RecommendInterventionRequest):
             },
         )
 
-@app.post("/retrieve-hint", response_model=RetrieveHintResponse)
-async def retrieve_hint(request: RetrieveHintRequest):
-    """Retrieve a contextual hint based on the current programming context."""
+@app.post("/retrieve-hint", response_model=RAGHintResponse)
+@app.post("/rag/hint", response_model=RAGHintResponse)
+async def retrieve_hint(request: RAGHintRequest):
+    """Retrieve a contextual hint using the RAG-lite pipeline."""
     try:
-        hint = await rag_retriever.retrieve_hint(
-            request.conceptTags,
-            request.errorContext,
-        )
-        return RetrieveHintResponse(
-            conceptReminder=hint["conceptReminder"],
-            exampleIdea=hint["exampleIdea"],
-            reflectiveQuestion=hint["reflectiveQuestion"],
-        )
+        # The new RAGService is synchronous in our implementation
+        response = rag_service.process_request(request)
+        return response
     except Exception as e:
-        # Fallback hint
-        return RetrieveHintResponse(
-            conceptReminder="Review the problem requirements carefully.",
-            exampleIdea="Break down the problem into smaller steps.",
-            reflectiveQuestion="What is the first step you need to take?",
+        import traceback
+        traceback.print_exc()
+        # Fallback hint matching RAGHintResponse
+        return RAGHintResponse(
+            interventionType=request.interventionType or "LOGIC_HINT",
+            retrievedConcepts=[],
+            conceptReminder="Try tracing the logic step by step before changing the code.",
+            exampleIdea="Check the values of your variables at the start, middle, and end of the loop.",
+            reflectiveQuestion="What do you expect each variable to contain after one iteration?",
+            sourceChunks=[],
+            fallbackUsed=True
         )
 
 @app.get("/health")
