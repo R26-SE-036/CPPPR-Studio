@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
+import { RetrieveHintDto } from './dto/retrieve-hint.dto';
 
 @Injectable()
 export class MlService {
