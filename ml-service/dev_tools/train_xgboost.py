@@ -77,8 +77,11 @@ class XGBoostTrainer:
         
         return X_test, y_test, y_pred, accuracy
     
-    def save_model(self, models_dir: str = '../models'):
+    def save_model(self, models_dir: str = None):
         """Save trained model, label encoder, and feature columns."""
+        if models_dir is None:
+            models_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models')
+            
         os.makedirs(models_dir, exist_ok=True)
         
         model_path = os.path.join(models_dir, 'pair_state_xgboost.joblib')
@@ -95,16 +98,17 @@ class XGBoostTrainer:
     
     def train_complete_pipeline(self, sessions_file: str = None, features_file: str = None):
         """Complete pipeline: extract features → train → save."""
+        base_dir = os.path.dirname(os.path.dirname(__file__))
         print("[INFO] Starting XGBoost training pipeline...")
         
         # Step 1: Extract features if needed
         if sessions_file and not features_file:
-            features_file = '../data/extracted/pair_state_features_v1.csv'
+            features_file = os.path.join(base_dir, 'data', 'extracted', 'pair_state_features_v1.csv')
             extractor = FeatureExtractor()
             extractor.prepare_training_data(sessions_file, features_file)
         
         if not features_file:
-            features_file = '../data/extracted/pair_state_features_v1.csv'
+            features_file = os.path.join(base_dir, 'data', 'extracted', 'pair_state_features_v1.csv')
         
         # Step 2: Load and prepare data
         X, y_encoded, feature_columns = self.load_and_prepare_data(features_file)
@@ -122,6 +126,7 @@ if __name__ == "__main__":
     trainer = XGBoostTrainer()
     
     # Run full pipeline
+    base_dir = os.path.dirname(os.path.dirname(__file__))
     accuracy = trainer.train_complete_pipeline(
-        sessions_file='../data/raw_sessions/mock_training_sessions.json'
+        sessions_file=os.path.join(base_dir, 'data', 'raw_sessions', 'mock_training_sessions.json')
     )
