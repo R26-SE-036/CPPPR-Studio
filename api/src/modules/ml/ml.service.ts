@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
+import { RetrieveHintDto } from './dto/retrieve-hint.dto';
 
 @Injectable()
 export class MlService {
@@ -71,28 +72,30 @@ export class MlService {
   /**
    * Retrieve a RAG-based hint for logic struggle support.
    */
-  async retrieveHint(
-    sessionId: string,
-    questionId: string,
-    conceptTags: string[],
-    errorContext: string,
-  ) {
+  async retrieveHint(dto: RetrieveHintDto) {
     try {
       const response = await this.httpService
         .post(`${this.mlServiceUrl}/retrieve-hint`, {
-          sessionId,
-          questionId,
-          conceptTags,
-          errorContext,
+          sessionId: dto.sessionId,
+          pairId: dto.pairId || '',
+          predictedState: dto.predictedState || 'LOGIC_STRUGGLE',
+          interventionType: dto.interventionType || 'LOGIC_HINT',
+          questionConceptTags: dto.questionConceptTags || [],
+          recentErrorContext: dto.recentErrorContext || '',
+          recentCodeSnippet: dto.recentCodeSnippet || '',
         })
         .toPromise();
 
       return response.data;
     } catch (error) {
       return {
-        conceptReminder: 'Review the problem requirements carefully.',
-        exampleIdea: 'Break down the problem into smaller steps.',
-        reflectiveQuestion: 'What is the first step you need to take?',
+        interventionType: dto.interventionType || 'LOGIC_HINT',
+        retrievedConcepts: [],
+        conceptReminder: 'Try tracing the logic step by step before changing the code.',
+        exampleIdea: 'Check the values of your variables at the start, middle, and end of the loop.',
+        reflectiveQuestion: 'What do you expect each variable to contain after one iteration?',
+        sourceChunks: [],
+        fallbackUsed: true
       };
     }
   }

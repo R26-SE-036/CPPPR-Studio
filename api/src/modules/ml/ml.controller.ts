@@ -22,6 +22,6 @@ export class MlController {
 
   @Post('retrieve-hint')
   async retrieveHint(@Body() dto: RetrieveHintDto) {
-    return this.mlService.retrieveHint(dto.sessionId, dto.questionId, dto.conceptTags, dto.errorContext);
+    return this.mlService.retrieveHint(dto);
   }
 }

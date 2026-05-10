@@ -11,6 +11,7 @@ import { Server, Socket } from 'socket.io';
 import { CodeRunnerService } from '../code-runner/code-runner.service';
 import { PrismaService } from '../../common/prisma.service';
 import { MlService } from '../ml/ml.service';
+import { MongoDbService } from '../../common/mongodb.service';
 
 @WebSocketGateway({
   cors: {
@@ -29,6 +30,7 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
     private readonly codeRunnerService: CodeRunnerService,
     private readonly prisma: PrismaService,
     private readonly mlService: MlService,
+    private readonly mongodb: MongoDbService,
   ) {}
 
   handleConnection(client: Socket) {
@@ -250,6 +252,14 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       // Call ML service
       const prediction = await this.mlService.predictPairState(sessionId, features);
 
+      // Log prediction and features to MongoDB for research analytics
+      await this.mongodb.logMLEvent(sessionId, {
+        features,
+        prediction,
+        timestamp: new Date(),
+        source: 'real_time_prediction_engine',
+      });
+
       if (prediction && prediction.predictedState !== 'PRODUCTIVE') {
         // Get intervention recommendation
         const intervention = await this.mlService.recommendIntervention(
@@ -288,12 +298,15 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
 
             if (session?.question) {
               const conceptTags = (session.question.conceptTags as string[]) || [];
-              const hint = await this.mlService.retrieveHint(
+              const hint = await this.mlService.retrieveHint({
                 sessionId,
-                session.question.id,
-                conceptTags,
-                '',
-              );
+                pairId: '',
+                predictedState: 'LOGIC_STRUGGLE',
+                interventionType: 'LOGIC_HINT',
+                questionConceptTags: conceptTags,
+                recentErrorContext: '',
+                recentCodeSnippet: '',
+              });
 
               if (hint) {
                 this.server.to(sessionId).emit('rag_hint', hint);

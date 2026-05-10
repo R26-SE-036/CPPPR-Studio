@@ -32,9 +32,9 @@ class XGBoostTrainer:
         y_encoded = self.label_encoder.fit_transform(y)
         self.feature_columns = feature_columns
         
-        print(f"📊 Data loaded: {X.shape[0]} samples, {X.shape[1]} features")
-        print(f"📊 Classes: {list(self.label_encoder.classes_)}")
-        print(f"📊 Distribution:")
+        print(f"[INFO] Data loaded: {X.shape[0]} samples, {X.shape[1]} features")
+        print(f"[INFO] Classes: {list(self.label_encoder.classes_)}")
+        print(f"[INFO] Distribution:")
         for cls in self.label_encoder.classes_:
             count = (y == cls).sum()
             print(f"   {cls}: {count} ({count/len(y)*100:.1f}%)")
@@ -71,8 +71,8 @@ class XGBoostTrainer:
         y_test_labels = self.label_encoder.inverse_transform(y_test)
         y_pred_labels = self.label_encoder.inverse_transform(y_pred)
         
-        print(f"\n📈 Model Accuracy: {accuracy:.4f}")
-        print("\n📋 Classification Report:")
+        print(f"\n[INFO] Model Accuracy: {accuracy:.4f}")
+        print("\n[INFO] Classification Report:")
         print(classification_report(y_test_labels, y_pred_labels))
         
         return X_test, y_test, y_pred, accuracy
@@ -89,13 +89,13 @@ class XGBoostTrainer:
         joblib.dump(self.label_encoder, encoder_path)
         joblib.dump(self.feature_columns, columns_path)
         
-        print(f"\n✅ Model saved to {model_path}")
-        print(f"✅ Label encoder saved to {encoder_path}")
-        print(f"✅ Feature columns saved to {columns_path}")
+        print(f"\n[SUCCESS] Model saved to {model_path}")
+        print(f"[SUCCESS] Label encoder saved to {encoder_path}")
+        print(f"[SUCCESS] Feature columns saved to {columns_path}")
     
     def train_complete_pipeline(self, sessions_file: str = None, features_file: str = None):
         """Complete pipeline: extract features → train → save."""
-        print("🚀 Starting XGBoost training pipeline...")
+        print("[INFO] Starting XGBoost training pipeline...")
         
         # Step 1: Extract features if needed
         if sessions_file and not features_file:
@@ -115,7 +115,7 @@ class XGBoostTrainer:
         # Step 4: Save
         self.save_model()
         
-        print(f"\n🎉 Training pipeline completed! Accuracy: {accuracy:.4f}")
+        print(f"\n[SUCCESS] Training pipeline completed! Accuracy: {accuracy:.4f}")
         return accuracy
 
 if __name__ == "__main__":

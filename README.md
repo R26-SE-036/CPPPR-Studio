@@ -30,6 +30,11 @@ The platform monitors student behavior in real-time (typing cadence, error rates
 - **💻 Real-Time Collaborative Workspace:** A synchronized Monaco code editor, live terminal output, and integrated WebSockets for seamless remote pairing.
 - **🧠 ML Behavior Analysis:** Continuously evaluates 8 distinct behavioral features over 3-minute sliding windows to predict the pair's state with high accuracy.
 - **🤖 RAG-Powered Virtual Tutor:** Dynamically fetches relevant programming concepts based on the pair's current code and compiler errors to provide actionable hints.
+  - **RAG-lite Pipeline:**
+    1. Load local Java and collaboration knowledge files.
+    2. Retrieve top relevant chunks using keyword scoring (concept tags, error context, code keywords).
+    3. Generate structured, scaffolded help without giving away final solutions.
+    4. Return a highly contextual `conceptReminder`, `exampleIdea`, and `reflectiveQuestion`.
 - **📊 Analytics & Dashboards:** Extensive data logging allows instructors to review session timelines, interventions triggered, and student performance metrics.
 - **🔄 Role Enforcement:** Built-in UI mechanics that encourage students to switch between the "Driver" and "Navigator" roles to maintain engagement.
 
