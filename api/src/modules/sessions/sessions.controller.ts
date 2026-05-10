@@ -26,6 +26,12 @@ export class SessionsController {
     return this.sessionsService.getAllAnalytics();
   }
 
+  @Get('my')
+  @UseGuards(JwtAuthGuard)
+  findMySessions(@Req() req: any) {
+    return this.sessionsService.findByUser(req.user.userId);
+  }
+
   @Get('analytics/:id')
   getOneAnalytics(@Param('id') id: string) {
     return this.sessionsService.getOneAnalytics(id);

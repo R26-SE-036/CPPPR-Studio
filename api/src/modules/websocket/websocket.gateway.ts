@@ -37,14 +37,14 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
   ) {}
 
   onModuleInit() {
-    // Run every 30 seconds to check for inactivity across all active sessions
+    // Run every 60 seconds to check for inactivity across all active sessions
     this.inactivityInterval = setInterval(() => {
       this.rooms.forEach((members, sessionId) => {
         if (members.size > 0) {
           this.triggerMlPrediction(sessionId);
         }
       });
-    }, 30000);
+    }, 60000);
   }
 
   onModuleDestroy() {
@@ -273,6 +273,11 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         orderBy: { timestamp: 'desc' },
         take: 50,
       });
+
+      // Skip prediction if not enough events yet (session just started)
+      if (recentEvents.length < 5) {
+        return;
+      }
 
       // Build simple features from recent events
       const features = this.extractSimpleFeatures(recentEvents);
