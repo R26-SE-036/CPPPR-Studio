@@ -8,6 +8,7 @@ import {
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { CodeRunnerService } from '../code-runner/code-runner.service';
 import { PrismaService } from '../../common/prisma.service';
 import { MlService } from '../ml/ml.service';
@@ -19,12 +20,14 @@ import { MongoDbService } from '../../common/mongodb.service';
     credentials: true,
   },
 })
-export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit, OnModuleDestroy {
   @WebSocketServer()
   server: Server;
 
   // Track room membership: sessionId -> Set<{ socketId, userId }>
   private rooms = new Map<string, Map<string, string>>(); // socketId -> userId
+  private inactivityInterval: NodeJS.Timeout;
+  private activeWorkCounters = new Map<string, number>(); // sessionId -> event count
 
   constructor(
     private readonly codeRunnerService: CodeRunnerService,
@@ -32,6 +35,23 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
     private readonly mlService: MlService,
     private readonly mongodb: MongoDbService,
   ) {}
+
+  onModuleInit() {
+    // Run every 30 seconds to check for inactivity across all active sessions
+    this.inactivityInterval = setInterval(() => {
+      this.rooms.forEach((members, sessionId) => {
+        if (members.size > 0) {
+          this.triggerMlPrediction(sessionId);
+        }
+      });
+    }, 30000);
+  }
+
+  onModuleDestroy() {
+    if (this.inactivityInterval) {
+      clearInterval(this.inactivityInterval);
+    }
+  }
 
   handleConnection(client: Socket) {
     console.log(`Client connected: ${client.id}`);
@@ -232,6 +252,14 @@ export class WebsocketGateway implements OnGatewayConnection, OnGatewayDisconnec
           metadata: JSON.stringify(metadata),
         },
       });
+
+      // Trigger ML periodically while actively working (e.g. every 30 events)
+      const count = (this.activeWorkCounters.get(sessionId) || 0) + 1;
+      this.activeWorkCounters.set(sessionId, count);
+      
+      if (count % 30 === 0) {
+        this.triggerMlPrediction(sessionId);
+      }
     } catch (error) {
       console.error('Failed to log event:', error);
     }
