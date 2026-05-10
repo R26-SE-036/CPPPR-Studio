@@ -2,12 +2,9 @@ from train_xgboost import XGBoostTrainer
 import os
 
 def train_from_mongodb_data():
-    features_file = 'data/extracted/pair_state_features_mongodb.csv'
+    base_dir = os.path.dirname(os.path.dirname(__file__))
+    features_file = os.path.join(base_dir, 'data', 'extracted', 'pair_state_features_mongodb.csv')
     
-    if not os.path.exists(features_file):
-        # Try relative to dev_tools if run from there
-        features_file = '../data/extracted/pair_state_features_mongodb.csv'
-        
     if not os.path.exists(features_file):
         print(f"[ERROR] Features file not found at {features_file}")
         return

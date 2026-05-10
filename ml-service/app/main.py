@@ -1,3 +1,9 @@
+import os
+import sys
+
+# Add the parent directory to sys.path so 'python app/main.py' works directly
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.schemas.predictions import PredictPairStateRequest, PredictPairStateResponse

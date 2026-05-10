@@ -3,15 +3,15 @@ from pymongo import MongoClient
 import os
 from dotenv import load_dotenv
 
-# Load env from api/.env
-load_dotenv('../api/.env')
-
-MONGODB_URI = os.getenv('MONGODB_URI')
-DB_NAME = 'pairprogramming_ml'
+# We will load env inside the function with correct absolute paths
 
 def export_to_csv():
+    api_env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'api', '.env')
+    load_dotenv(api_env_path)
+    MONGODB_URI = os.getenv('MONGODB_URI')
+    
     if not MONGODB_URI:
-        print("[ERROR] MONGODB_URI not found")
+        print(f"[ERROR] MONGODB_URI not found in {api_env_path}")
         return
 
     client = MongoClient(MONGODB_URI)
@@ -37,7 +37,8 @@ def export_to_csv():
     
     df = pd.DataFrame(rows)
     
-    output_path = 'data/extracted/pair_state_features_mongodb.csv'
+    base_dir = os.path.dirname(os.path.dirname(__file__))
+    output_path = os.path.join(base_dir, 'data', 'extracted', 'pair_state_features_mongodb.csv')
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     df.to_csv(output_path, index=False)
     print(f"[SUCCESS] Exported to {output_path}")

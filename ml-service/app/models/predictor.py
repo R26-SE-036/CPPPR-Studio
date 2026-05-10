@@ -20,16 +20,16 @@ class PairStatePredictor:
             columns_path = os.path.join(models_dir, 'pair_state_feature_columns.joblib')
             
             if not os.path.exists(model_path):
-                print(f"⚠️ Model file not found at {model_path}, using fallback predictions")
+                print(f"[WARNING] Model file not found at {model_path}, using fallback predictions")
                 return False
             
             self.model = joblib.load(model_path)
             self.label_encoder = joblib.load(encoder_path)
             self.feature_columns = joblib.load(columns_path)
-            print(f"✅ Loaded XGBoost model from {model_path}")
+            print(f"[SUCCESS] Loaded XGBoost model from {model_path}")
             return True
         except Exception as e:
-            print(f"⚠️ Failed to load models: {e}, using fallback predictions")
+            print(f"[WARNING] Failed to load models: {e}, using fallback predictions")
             return False
 
     async def predict(self, features: Dict[str, Any]) -> Dict[str, Any]:
@@ -49,7 +49,7 @@ class PairStatePredictor:
                 "confidence": confidence
             }
         except Exception as e:
-            print(f"⚠️ Prediction error: {e}")
+            print(f"[WARNING] Prediction error: {e}")
             return self._fallback_prediction(features)
 
     def _prepare_features(self, features: Dict[str, Any]) -> np.ndarray:
